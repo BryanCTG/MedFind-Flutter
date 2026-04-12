@@ -1,0 +1,29 @@
+name: medfind
+description: App de medicamentos con IA
+version: 2.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.12.2      # Auth + base de datos
+  http: ^1.2.0                  # Llamadas HTTP al webhook n8n
+  image_picker: ^1.0.7          # Cámara para escanear receta
+  flutter_local_notifications: ^17.0.0  # Notificaciones locales
+  intl: ^0.19.0                 # Formato de moneda COP
+  cached_network_image: ^3.3.1  # Imágenes con caché
+  flutter_dotenv: ^5.1.0        # Variables de entorno
+  shared_preferences: ^2.2.2    # Guardar datos simples localmente
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+   
