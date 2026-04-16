@@ -14,7 +14,8 @@
 
 | Login | Ficha Médica | Inicio | Carrito | Pedido confirmado |
 |-------|-------------|--------|---------|------------------|
-| Autenticación segura | Perfil de salud | Búsqueda de medicamentos | Gestión del carrito | Código de pedido + email al admin |
+| <img width="436" height="875" alt="image" src="https://github.com/user-attachments/assets/b8706634-d0d2-4af2-8a4a-df7b84df7b9c" />
+ | Perfil de salud | Búsqueda de medicamentos | Gestión del carrito | Código de pedido + email al admin |
 
 ---
 
