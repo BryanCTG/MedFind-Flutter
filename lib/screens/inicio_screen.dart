@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
-import 'receta_screen.dart';
 import 'carrito_screen.dart';
 import 'notificaciones_screen.dart';
 import 'registro_perfil_screen.dart';
@@ -22,9 +21,8 @@ class _InicioScreenState extends State<InicioScreen> {
   List<String> _condiciones = [];
   bool _cargando = true;
   final _busquedaCtrl = TextEditingController();
-  int _notificacionesSinLeer = 2; // simulado
+  int _notificacionesSinLeer = 2;
 
-  // Items en el carrito (se comparte entre pantallas via setState)
   final List<Map<String, dynamic>> _carrito = [];
 
   @override
@@ -57,14 +55,12 @@ class _InicioScreenState extends State<InicioScreen> {
       var query = supabase.from('medicamentos').select();
 
       if (busqueda != null && busqueda.isNotEmpty) {
-        // Búsqueda por nombre, insensible a mayúsculas
         query = query.ilike('nombre', '%$busqueda%');
       }
 
       final data = await query.order('nombre').limit(20);
       setState(() => _medicamentos = List<Map<String, dynamic>>.from(data));
 
-      // Recomendados: filtra por condición del usuario
       if (_condiciones.isNotEmpty) {
         final cond = _condiciones.first.toLowerCase();
         setState(() {
@@ -115,7 +111,6 @@ class _InicioScreenState extends State<InicioScreen> {
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader()),
                   SliverToBoxAdapter(child: _buildBusqueda()),
-                  SliverToBoxAdapter(child: _buildBannerReceta()),
                   if (_recomendados.isNotEmpty)
                     SliverToBoxAdapter(child: _buildRecomendados()),
                   SliverToBoxAdapter(child: _buildTodosLosMedicamentos()),
@@ -241,55 +236,6 @@ class _InicioScreenState extends State<InicioScreen> {
           ),
           filled: true,
           fillColor: Colors.white,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBannerReceta() {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: GestureDetector(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => RecetaScreen(onMedicamentosEncontrados: (meds) {
-              for (final m in meds) _agregarAlCarrito(m);
-            }),
-          ),
-        ),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 28),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF00BCD4), Color(0xFF0097A7)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle),
-                child: const Icon(Icons.camera_alt, size: 36, color: Colors.white),
-              ),
-              const SizedBox(height: 12),
-              const Text('SUBIR RECETA CON IA',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1)),
-              const SizedBox(height: 4),
-              const Text('Fotografía tu receta y añadimos todo al carrito',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-            ],
-          ),
         ),
       ),
     );
@@ -453,7 +399,6 @@ class _InicioScreenState extends State<InicioScreen> {
                   fontWeight: FontWeight.bold,
                   fontSize: 13)),
           const SizedBox(height: 2),
-          // Indicador de stock
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
@@ -489,7 +434,8 @@ class _InicioScreenState extends State<InicioScreen> {
   }
 
   Widget _buildBottomNav() {
-    final cantCarrito = _carrito.fold<int>(0, (s, m) => s + (m['cantidad'] as int));
+    final cantCarrito =
+        _carrito.fold<int>(0, (s, m) => s + (m['cantidad'] as int));
     return BottomNavigationBar(
       currentIndex: _tabIndex,
       selectedItemColor: const Color(0xFF00BCD4),
@@ -517,12 +463,12 @@ class _InicioScreenState extends State<InicioScreen> {
             child: const Icon(Icons.shopping_cart),
           ),
         ),
-        const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.person), label: 'Perfil'),
       ],
     );
   }
 
-  // Formatea precio en pesos colombianos (COP)
   String _formatCOP(dynamic precio) {
     if (precio == null) return '\$0 COP';
     final p = (precio as num).toInt();

@@ -10,10 +10,10 @@ Future<void> main() async {
 
   await dotenv.load(fileName: '.env');
 
-  await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL']!,
-    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
-  );
+ await Supabase.initialize(
+  url: 'https://hjuqggbtisdqtmrtmzmu.supabase.co',
+  anonKey: 'sb_publishable_KWaGtg-8xdR7A2HDyalE9g_NtLt3kmJ',
+);
 
   await NotificationService.init();
 
