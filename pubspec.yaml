@@ -8,14 +8,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  supabase_flutter: ^2.12.2      # Auth + base de datos
-  http: ^1.2.0                  # Llamadas HTTP al webhook n8n
-  image_picker: ^1.0.7          # Cámara para escanear receta
-  flutter_local_notifications: ^17.0.0  # Notificaciones locales
-  intl: ^0.19.0                 # Formato de moneda COP
-  cached_network_image: ^3.3.1  # Imágenes con caché
-  flutter_dotenv: ^5.1.0        # Variables de entorno
-  shared_preferences: ^2.2.2    # Guardar datos simples localmente
+  supabase_flutter: ^2.12.2
+  http: ^1.2.0
+  image_picker: ^1.0.7
+  flutter_local_notifications: ^17.0.0
+  intl: ^0.19.0
+  cached_network_image: ^3.3.1
+  flutter_dotenv: ^5.1.0
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
@@ -26,4 +26,3 @@ flutter:
   uses-material-design: true
   assets:
     - .env
-   

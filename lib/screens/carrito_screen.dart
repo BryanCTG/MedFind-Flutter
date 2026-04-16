@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/api_service.dart';
 import '../main.dart';
 
 class CarritoScreen extends StatefulWidget {
@@ -68,6 +69,13 @@ class _CarritoScreenState extends State<CarritoScreen> {
               })
           .toList();
 
+            final orderCode = await ApiService.enviarPedido(
+            userName: supabase.auth.currentUser?.email ?? "Cliente",
+            total: _total,
+            type: _domicilio ? "Domicilio" : "Recoge en tienda", 
+            items: itemsData
+          );
+
       await supabase.from('pedidos').insert({
         'usuario_id': userId,
         'items': itemsData,
@@ -78,10 +86,11 @@ class _CarritoScreenState extends State<CarritoScreen> {
         'subtotal': _subtotal,
         'total': _total,
         'estado': 'pendiente',
+        'codigo': orderCode,
       });
 
       if (mounted) {
-        _mostrarExito();
+       _mostrarExito(orderCode);
       }
     } catch (e) {
       _snack('Error al procesar el pedido: $e');
@@ -95,7 +104,7 @@ class _CarritoScreenState extends State<CarritoScreen> {
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _mostrarExito() {
+  void _mostrarExito(String? codigo) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -124,6 +133,15 @@ class _CarritoScreenState extends State<CarritoScreen> {
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                     color: Color(0xFF00BCD4))),
+
+                    const SizedBox(height: 10),
+                    Text(
+                      'Código: $codigo',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
           ],
         ),
         actions: [
