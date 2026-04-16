@@ -1,0 +1,135 @@
+{
+  "name": "MedFind Final",
+  "nodes": [
+    {
+      "parameters": {
+        "sendTo": "bryantctg@gmail.com",
+        "subject": "=Nuevo pedido {{ $json.orderCode }}",
+        "message": "={{ $json.emailHtml }}",
+        "options": {}
+      },
+      "id": "b3086e0b-457f-46de-91cc-aed27c2ce8ec",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        -128
+      ],
+      "webhookId": "fd2f0aa2-a3a5-470b-8bf6-b62668780dab",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "TaVyxU04hcTvGGU9",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "medfind-order",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3d70ccb3-4ee8-4408-8ad2-3e1c000e4713",
+      "name": "Webhook1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1264,
+        -240
+      ],
+      "webhookId": "73133ecd-c1ec-490d-b962-8a2d7513f0e7"
+    },
+    {
+      "parameters": {
+        "functionCode": "const body = $json.body;\nconst random = Math.floor(1000 + Math.random() * 9000);\nconst date = new Date().toISOString().slice(0,10).replace(/-/g,'');\nconst orderCode = `MF-${date}-${random}`;\n\nconst itemsHtml = body.items.map(item =>\n  `<li><strong>${item.nombre}</strong> — ${item.cantidad} x $${Number(item.precio).toLocaleString('es-CO')}</li>`\n).join('\\n');\n\nconst esDomicilio = ['delivery', 'domicilio'].includes(body.type?.toLowerCase());\nconst tipoEntrega = esDomicilio ? '🚚 Domicilio' : '🏪 Recogida en farmacia';\n\nconst entregaDetalles = esDomicilio ? `\n<p><strong>👤 Recibe:</strong> ${body.recipientName || body.userName}</p>\n<p><strong>📍 Dirección:</strong> ${body.address}</p>\n` : '';\n\nconst emailHtml = `\n<h2 style=\"color:#00BCD4;\">🧾 Nuevo Pedido MedFind</h2>\n<p><strong>Código:</strong> ${orderCode}</p>\n<hr>\n<p><strong>👤 Cliente:</strong> ${body.userName}</p>\n<p><strong>💰 Total:</strong> $${Number(body.total).toLocaleString('es-CO')} COP</p>\n<p><strong>Tipo de entrega:</strong> ${tipoEntrega}</p>\n${entregaDetalles}\n<hr>\n<h3>🛒 Medicamentos:</h3>\n<ul>${itemsHtml}</ul>\n<hr>\n<p style=\"color:gray;\">Este pedido fue generado automáticamente desde la app MedFind.</p>\n`;\n\nreturn [{\n  json: {\n    ...$json,\n    orderCode,\n    emailHtml\n  }\n}];"
+      },
+      "id": "4b9d01c3-5f05-41ce-9fad-3505945c7f94",
+      "name": "Generate Code1",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -1024,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"orderCode\": \"{{$json.orderCode}}\",\n  \"userName\": \"{{ $('Webhook1').item.json.body.userName }}\",\n  \"Medicamentos\" :\"{{ $('Webhook1').item.json.body.items }}\",\n  \"total\": \"{{ $('Webhook1').item.json.body.total }}\",\n  \"type\": \"{{ $json.body.type }}\"\n}",
+        "options": {}
+      },
+      "id": "4ff161da-625f-40ac-8b43-09fde883a915",
+      "name": "Respond1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        -240
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Send Email": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Generate Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Code1": {
+      "main": [
+        [
+          {
+            "node": "Respond1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond1": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "78006abd-1649-4628-9879-ca4c175a61f2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c53884d62c543cf2eb68c371ecb71791742b1806ba781658e67f48a66f45eb3e"
+  },
+  "id": "faCytcwHkDTsf72e",
+  "tags": [
+    {
+      "updatedAt": "2026-04-16T14:04:49.299Z",
+      "createdAt": "2026-04-16T14:04:49.299Z",
+      "id": "L6YY7VAdQTjRfQ55",
+      "name": "MedFind"
+    }
+  ]
+}
