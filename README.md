@@ -12,9 +12,16 @@
 
 ## 📱 Pantallas Principales
 
-| Login | Ficha Médica | Inicio | Carrito | Pedido confirmado |
-|-------|-------------|--------|---------|------------------|
-| Autenticación segura | Perfil de salud | Búsqueda de medicamentos | Gestión del carrito | Código de pedido + email al admin |
+
+
+
+<img width="436" height="875" alt="image" src="https://github.com/user-attachments/assets/b8706634-d0d2-4af2-8a4a-df7b84df7b9c" />
+<img width="431" height="854" alt="image" src="https://github.com/user-attachments/assets/7474bed1-aaa3-4a95-a33e-b4c812363ba1" />
+<img width="431" height="860" alt="image" src="https://github.com/user-attachments/assets/c6600918-0d8f-4b88-8026-2108e7bd8b67" />
+<img width="431" height="838" alt="image" src="https://github.com/user-attachments/assets/3d6d0500-915f-4254-8fb4-c343c204028b" />
+<img width="441" height="855" alt="image" src="https://github.com/user-attachments/assets/fdee7abd-9a31-4442-b1b6-f615af3c01d9" />
+
+
 
 ---
 
