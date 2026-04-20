@@ -21,6 +21,8 @@ class _InicioScreenState extends State<InicioScreen> {
   List<String> _condiciones = [];
   bool _cargando = true;
   final _busquedaCtrl = TextEditingController();
+  final _busquedaFocusNode = FocusNode();
+  final _scrollController = ScrollController();
   int _notificacionesSinLeer = 2;
 
   final List<Map<String, dynamic>> _carrito = [];
@@ -31,6 +33,13 @@ class _InicioScreenState extends State<InicioScreen> {
     _cargarDatos();
   }
 
+   @override
+  void dispose() {
+    _busquedaCtrl.dispose();
+    _busquedaFocusNode.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
   Future<void> _cargarDatos() async {
     await Future.wait([_cargarPerfil(), _cargarMedicamentos()]);
     setState(() => _cargando = false);
@@ -108,6 +117,7 @@ class _InicioScreenState extends State<InicioScreen> {
         child: _cargando
             ? const Center(child: CircularProgressIndicator())
             : CustomScrollView(
+               controller: _scrollController,
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader()),
                   SliverToBoxAdapter(child: _buildBusqueda()),
@@ -217,6 +227,7 @@ class _InicioScreenState extends State<InicioScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: TextField(
         controller: _busquedaCtrl,
+        focusNode: _busquedaFocusNode,
         onChanged: (v) => _cargarMedicamentos(busqueda: v),
         decoration: InputDecoration(
           hintText: 'Buscar medicamentos...',
@@ -441,7 +452,15 @@ class _InicioScreenState extends State<InicioScreen> {
       selectedItemColor: const Color(0xFF00BCD4),
       unselectedItemColor: Colors.grey,
       onTap: (i) {
-        if (i == 2) {
+        if (i == 1) {
+          setState(() => _tabIndex = i);
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+          _busquedaFocusNode.requestFocus();
+        } else if (i == 2) {
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -463,8 +482,8 @@ class _InicioScreenState extends State<InicioScreen> {
             child: const Icon(Icons.shopping_cart),
           ),
         ),
-        const BottomNavigationBarItem(
-            icon: Icon(Icons.person), label: 'Perfil'),
+        // const BottomNavigationBarItem(
+        //     icon: Icon(Icons.person), label: 'Perfil'),
       ],
     );
   }
