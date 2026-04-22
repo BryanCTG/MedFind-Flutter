@@ -45,59 +45,109 @@ class _CarritoScreenState extends State<CarritoScreen> {
   }
 
   // ── Confirmar pedido ───────────────────────────────────────────────────────
-  Future<void> _confirmarPedido() async {
-    if (_domicilio) {
-      if (_direccionCtrl.text.isEmpty) {
-        _snack('Por favor ingresa la dirección de entrega');
-        return;
-      }
-      if (_nombreReceptorCtrl.text.isEmpty) {
-        _snack('Por favor ingresa el nombre de quien recibe');
-        return;
-      }
+Future<void> _confirmarPedido() async {
+  if (_domicilio) {
+    if (_direccionCtrl.text.isEmpty) {
+      _snack('Por favor ingresa la dirección de entrega');
+      return;
     }
-
-    setState(() => _procesando = true);
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      final itemsData = _items
-          .map((m) => {
-                'id': m['id'],
-                'nombre': m['nombre'],
-                'precio': m['precio'],
-                'cantidad': m['cantidad'],
-              })
-          .toList();
-
-            final orderCode = await ApiService.enviarPedido(
-            userName: supabase.auth.currentUser?.email ?? "Cliente",
-            total: _total,
-            type: _domicilio ? "Domicilio" : "Recoge en tienda", 
-            items: itemsData
-          );
-
-      await supabase.from('pedidos').insert({
-        'usuario_id': userId,
-        'items': itemsData,
-        'metodo_entrega': _domicilio ? 'domicilio' : 'tienda',
-        'direccion': _domicilio ? _direccionCtrl.text.trim() : null,
-        'nombre_receptor': _domicilio ? _nombreReceptorCtrl.text.trim() : null,
-        'costo_envio': _costoEnvio,
-        'subtotal': _subtotal,
-        'total': _total,
-        'estado': 'pendiente',
-        'codigo': orderCode,
-      });
-
-      if (mounted) {
-       _mostrarExito(orderCode);
-      }
-    } catch (e) {
-      _snack('Error al procesar el pedido: $e');
-    } finally {
-      if (mounted) setState(() => _procesando = false);
+    if (_nombreReceptorCtrl.text.isEmpty) {
+      _snack('Por favor ingresa el nombre de quien recibe');
+      return;
     }
   }
+
+  setState(() => _procesando = true);
+  try {
+    final userId = supabase.auth.currentUser?.id;
+    final itemsData = _items
+        .map((m) => {
+              'id': m['id'],
+              'nombre': m['nombre'],
+              'precio': m['precio'],
+              'cantidad': m['cantidad'],
+            })
+        .toList();
+
+    // 1. Verificar stock en tiempo real antes de procesar
+    for (final item in _items) {
+      final result = await supabase
+          .from('medicamentos')
+          .select('stock, nombre')
+          .eq('id', item['id'])
+          .single();
+
+      final stockActual = (result['stock'] as num).toInt();
+      final cantidad = item['cantidad'] as int;
+
+      if (stockActual < cantidad) {
+        _snack(
+          '${result['nombre']}: solo quedan $stockActual unidades disponibles',
+        );
+        setState(() => _procesando = false);
+        return;
+      }
+    }
+
+    // 2. Enviar pedido a n8n y obtener código
+    final orderCode = await ApiService.enviarPedido(
+      userName: supabase.auth.currentUser?.email ?? 'Cliente',
+      total: _total,
+      type: _domicilio ? 'Domicilio' : 'Recoge en tienda',
+      items: itemsData,
+    );
+
+    // 3. Guardar pedido en Supabase
+    await supabase.from('pedidos').insert({
+      'usuario_id': userId,
+      'items': itemsData,
+      'metodo_entrega': _domicilio ? 'domicilio' : 'tienda',
+      'direccion': _domicilio ? _direccionCtrl.text.trim() : null,
+      'nombre_receptor': _domicilio ? _nombreReceptorCtrl.text.trim() : null,
+      'costo_envio': _costoEnvio,
+      'subtotal': _subtotal,
+      'total': _total,
+      'estado': 'pendiente',
+      'codigo': orderCode,
+    });
+
+    // 4. Decrementar stock vía RPC para cada ítem
+    for (final item in _items) {
+      await supabase.rpc('decrementar_stock', params: {
+        'p_id': item['id'],
+        'p_cantidad': item['cantidad'],
+      });
+    }
+
+    // 5. Disparar alerta de bajo stock si aplica
+    final agotados = <Map<String, dynamic>>[];
+    for (final item in _items) {
+      final result = await supabase
+          .from('medicamentos')
+          .select('stock, nombre')
+          .eq('id', item['id'])
+          .single();
+      if ((result['stock'] as num) <= 5) {
+        agotados.add({
+          'id': item['id'],
+          'nombre': result['nombre'],
+          'stock_nuevo': result['stock'],
+        });
+      }
+    }
+    if (agotados.isNotEmpty) {
+      await ApiService.alertarBajoStock(medicamentosAgotados: agotados);
+    }
+
+    if (mounted) {
+      _mostrarExito(orderCode);
+    }
+  } catch (e) {
+    _snack('Error al procesar el pedido: $e');
+  } finally {
+    if (mounted) setState(() => _procesando = false);
+  }
+}
 
   void _snack(String msg) {
     ScaffoldMessenger.of(context)
@@ -358,9 +408,23 @@ class _CarritoScreenState extends State<CarritoScreen> {
                     style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
               _btnCantidad(
-                  icon: Icons.add,
-                  filled: true,
-                  onTap: () => setState(() => item['cantidad']++)),
+                icon: Icons.add,
+                filled: true,
+                onTap: () {
+                  final stockDisponible = (item['stock'] as num?)?.toInt() ?? 0;
+                  if (item['cantidad'] >= stockDisponible) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Máximo disponible: $stockDisponible unidades'),
+                        backgroundColor: Colors.orange,
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+                    return;
+                  }
+                  setState(() => item['cantidad']++);
+                },
+              ),
             ],
           ),
         ],

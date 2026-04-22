@@ -5,11 +5,11 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class ApiService {
   static String get _orderUrl =>
       dotenv.env['N8N_ORDER_WEBHOOK_URL'] ??
-      'https://briayanbeltranm.app.n8n.cloud/webhook-test/medfind-order';
+      'https://briayanbeltranm.app.n8n.cloud/webhook/medfind-order';
 
   static String get _lowStockUrl =>
-      dotenv.env['N8N_LOW_STOCK_WEBHOOK_URL'] ?? 'https://briayanbeltranm.app.n8n.cloud/webhook-test/medfind-low-stock';
-
+  dotenv.env['N8N_LOW_STOCK_WEBHOOK_URL'] ??
+  'https://briayanbeltranm.app.n8n.cloud/webhook-test/medfind-low-stock';
   // ── Envío de pedido  ───────
   static Future<String?> enviarPedido({
     required String userName,

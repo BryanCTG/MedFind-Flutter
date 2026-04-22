@@ -84,20 +84,36 @@ class _InicioScreenState extends State<InicioScreen> {
   }
 
   void _agregarAlCarrito(Map<String, dynamic> med) {
-    final existe = _carrito.indexWhere((m) => m['id'] == med['id']);
-    if (existe >= 0) {
-      setState(() => _carrito[existe]['cantidad']++);
-    } else {
-      setState(() => _carrito.add({...med, 'cantidad': 1}));
-    }
+  final stockDisponible = (med['stock'] as num?)?.toInt() ?? 0;
+  
+  // Cuántas unidades ya están en el carrito
+  final idx = _carrito.indexWhere((m) => m['id'] == med['id']);
+  final cantidadEnCarrito = idx >= 0 ? (_carrito[idx]['cantidad'] as int) : 0;
+
+  if (cantidadEnCarrito >= stockDisponible) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${med['nombre']} añadido al carrito'),
-        backgroundColor: const Color(0xFF00BCD4),
-        duration: const Duration(seconds: 1),
+        content: Text('Solo hay $stockDisponible unidades disponibles de ${med['nombre']}'),
+        backgroundColor: Colors.orange,
       ),
     );
+    return;
   }
+
+  if (idx >= 0) {
+    setState(() => _carrito[idx]['cantidad']++);
+  } else {
+    setState(() => _carrito.add({...med, 'cantidad': 1}));
+  }
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text('${med['nombre']} añadido al carrito'),
+      backgroundColor: const Color(0xFF00BCD4),
+      duration: const Duration(seconds: 1),
+    ),
+  );
+}
 
   Future<void> _cerrarSesion() async {
     await supabase.auth.signOut();
