@@ -8,12 +8,14 @@ import 'services/notification_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Carga las variables de entorno desde .env
   await dotenv.load(fileName: '.env');
 
+  // BUG FIX: credenciales leídas desde .env, no hardcodeadas
  await Supabase.initialize(
-  url: 'https://hjuqggbtisdqtmrtmzmu.supabase.co',
-  anonKey: 'sb_publishable_KWaGtg-8xdR7A2HDyalE9g_NtLt3kmJ',
-);
+  url: dotenv.env['SUPABASE_URL'] ?? 'https://hjuqggbtisdqtmrtmzmu.supabase.co',
+  anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? 'sb_publishable_KWaGtg-8xdR7A2HDyalE9g_NtLt3kmJ',
+ );
 
   await NotificationService.init();
 
@@ -49,7 +51,8 @@ class MedFindApp extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF00BCD4), width: 2),
+            borderSide:
+                const BorderSide(color: Color(0xFF00BCD4), width: 2),
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(

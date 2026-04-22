@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/api_service.dart';
+import '../services/notificacion_store.dart';
 import '../main.dart';
 
 class CarritoScreen extends StatefulWidget {
@@ -16,21 +16,25 @@ class _CarritoScreenState extends State<CarritoScreen> {
   bool _domicilio = false;
   bool _procesando = false;
 
-  // Campos para domicilio
   final _direccionCtrl = TextEditingController();
   final _nombreReceptorCtrl = TextEditingController();
 
-  // Precio del domicilio en COP
   static const double _precioDomicilio = 8000;
 
   @override
   void initState() {
     super.initState();
-    // Copia para no mutar la lista original
     _items = widget.carrito.map((m) => Map<String, dynamic>.from(m)).toList();
   }
 
-  // ── Cálculos en COP ────────────────────────────────────────────────────────
+  @override
+  void dispose() {
+    _direccionCtrl.dispose();
+    _nombreReceptorCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Cálculos ───────────────────────────────────────────────────────────────
   double get _subtotal => _items.fold(
       0, (s, m) => s + ((m['precio'] as num) * (m['cantidad'] as int)));
 
@@ -39,8 +43,12 @@ class _CarritoScreenState extends State<CarritoScreen> {
 
   String _cop(double v) {
     final p = v.toInt();
-    final f = p.toString().replaceAllMapped(
-        RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
+    final f = p
+        .toString()
+        .replaceAllMapped(
+          RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+          (m) => '${m[1]}.',
+        );
     return '\$$f COP';
   }
 
@@ -58,6 +66,7 @@ Future<void> _confirmarPedido() async {
   }
 
   setState(() => _procesando = true);
+
   try {
     final userId = supabase.auth.currentUser?.id;
     final itemsData = _items
@@ -69,7 +78,7 @@ Future<void> _confirmarPedido() async {
             })
         .toList();
 
-    // 1. Verificar stock en tiempo real antes de procesar
+    // 1. Verificar stock en tiempo real
     for (final item in _items) {
       final result = await supabase
           .from('medicamentos')
@@ -81,67 +90,83 @@ Future<void> _confirmarPedido() async {
       final cantidad = item['cantidad'] as int;
 
       if (stockActual < cantidad) {
-        _snack(
-          '${result['nombre']}: solo quedan $stockActual unidades disponibles',
-        );
+        _snack('${result['nombre']}: solo quedan $stockActual unidades');
         setState(() => _procesando = false);
         return;
       }
     }
 
-    // 2. Enviar pedido a n8n y obtener código
+    // 2. Llamar a n8n
+    final tipoEntrega = _domicilio ? 'Domicilio' : 'Recoge en tienda';
     final orderCode = await ApiService.enviarPedido(
       userName: supabase.auth.currentUser?.email ?? 'Cliente',
       total: _total,
-      type: _domicilio ? 'Domicilio' : 'Recoge en tienda',
+      type: tipoEntrega,
       items: itemsData,
     );
 
-    // 3. Guardar pedido en Supabase
-    await supabase.from('pedidos').insert({
-      'usuario_id': userId,
-      'items': itemsData,
-      'metodo_entrega': _domicilio ? 'domicilio' : 'tienda',
-      'direccion': _domicilio ? _direccionCtrl.text.trim() : null,
-      'nombre_receptor': _domicilio ? _nombreReceptorCtrl.text.trim() : null,
-      'costo_envio': _costoEnvio,
-      'subtotal': _subtotal,
-      'total': _total,
-      'estado': 'pendiente',
-      'codigo': orderCode,
-    });
+    final codigoFinal = orderCode ?? 'MF-LOCAL-${DateTime.now().millisecondsSinceEpoch}';
 
-    // 4. Decrementar stock vía RPC para cada ítem
-    for (final item in _items) {
-      await supabase.rpc('decrementar_stock', params: {
-        'p_id': item['id'],
-        'p_cantidad': item['cantidad'],
+    // 3. ✅ Notificación AQUÍ — antes de Supabase para que siempre se ejecute
+    NotificacionStore().agregarPedidoConfirmado(
+      orderCode: codigoFinal,
+      total: _total,
+      tipo: tipoEntrega,
+    );
+
+    // 4. Mostrar diálogo de éxito AQUÍ también
+    if (mounted) _mostrarExito(codigoFinal);
+
+    // 5. Operaciones de Supabase en segundo plano (errores no bloquean al usuario)
+    try {
+      await supabase.from('pedidos').insert({
+        'usuario_id': userId,
+        'items': itemsData,
+        'metodo_entrega': _domicilio ? 'domicilio' : 'tienda',
+        'direccion': _domicilio ? _direccionCtrl.text.trim() : null,
+        'nombre_receptor': _domicilio ? _nombreReceptorCtrl.text.trim() : null,
+        'costo_envio': _costoEnvio,
+        'subtotal': _subtotal,
+        'total': _total,
+        'estado': 'pendiente',
+        'codigo': codigoFinal,
       });
-    }
 
-    // 5. Disparar alerta de bajo stock si aplica
-    final agotados = <Map<String, dynamic>>[];
-    for (final item in _items) {
-      final result = await supabase
-          .from('medicamentos')
-          .select('stock, nombre')
-          .eq('id', item['id'])
-          .single();
-      if ((result['stock'] as num) <= 5) {
-        agotados.add({
-          'id': item['id'],
-          'nombre': result['nombre'],
-          'stock_nuevo': result['stock'],
+      for (final item in _items) {
+        await supabase.rpc('decrementar_stock', params: {
+          'p_id': item['id'],
+          'p_cantidad': item['cantidad'],
         });
       }
-    }
-    if (agotados.isNotEmpty) {
-      await ApiService.alertarBajoStock(medicamentosAgotados: agotados);
+
+      // 6. Alertas de stock bajo
+      for (final item in _items) {
+        final result = await supabase
+            .from('medicamentos')
+            .select('stock, nombre')
+            .eq('id', item['id'])
+            .single();
+
+        final stockRestante = (result['stock'] as num).toInt();
+        final nombre = result['nombre'] as String;
+
+        if (stockRestante == 0) {
+          NotificacionStore().agregarProductoAgotado(nombre);
+          await ApiService.alertarBajoStock(medicamentosAgotados: [
+            {'id': item['id'], 'nombre': nombre, 'stock_nuevo': 0}
+          ]);
+        } else if (stockRestante <= 5) {
+          NotificacionStore().agregarAlertaBajoStock(nombre, stockRestante);
+          await ApiService.alertarBajoStock(medicamentosAgotados: [
+            {'id': item['id'], 'nombre': nombre, 'stock_nuevo': stockRestante}
+          ]);
+        }
+      }
+    } catch (e) {
+      // Error en Supabase — el usuario ya vio su código, solo logueamos
+      debugPrint('Error en operaciones Supabase: $e');
     }
 
-    if (mounted) {
-      _mostrarExito(orderCode);
-    }
   } catch (e) {
     _snack('Error al procesar el pedido: $e');
   } finally {
@@ -154,21 +179,26 @@ Future<void> _confirmarPedido() async {
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _mostrarExito(String? codigo) {
+  void _mostrarExito(String codigo) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle_rounded,
-                color: Color(0xFF00BCD4), size: 72),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF00BCD4),
+              size: 72,
+            ),
             const SizedBox(height: 16),
-            const Text('¡Pedido confirmado!',
-                style:
-                    TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Text(
+              '¡Pedido confirmado!',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Text(
               _domicilio
@@ -178,20 +208,37 @@ Future<void> _confirmarPedido() async {
               style: const TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 8),
-            Text('Total: ${_cop(_total)}',
+            Text(
+              'Total: ${_cop(_total)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: Color(0xFF00BCD4),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F7FA),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Código: $codigo',
                 style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    color: Color(0xFF00BCD4))),
-
-                    const SizedBox(height: 10),
-                    Text(
-                      'Código: $codigo',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Revisa tus notificaciones para ver el detalle.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
           ],
         ),
         actions: [
@@ -209,6 +256,7 @@ Future<void> _confirmarPedido() async {
     );
   }
 
+  // ── UI ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,8 +264,10 @@ Future<void> _confirmarPedido() async {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Tu Carrito (${_items.length})',
-            style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          'Tu Carrito (${_items.length})',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           onPressed: () => Navigator.pop(context),
@@ -233,14 +283,13 @@ Future<void> _confirmarPedido() async {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Lista de productos
                         ..._items.map(_buildItemCard),
                         const SizedBox(height: 24),
-
-                        // Método de entrega
-                        const Text('Método de Entrega',
-                            style: TextStyle(
-                                fontSize: 17, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Método de Entrega',
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 12),
                         _buildOpcionEntrega(
                           icono: Icons.store,
@@ -253,16 +302,17 @@ Future<void> _confirmarPedido() async {
                         _buildOpcionEntrega(
                           icono: Icons.delivery_dining,
                           titulo: 'Domicilio',
-                          subtitulo: 'Costo: ${_cop(_precioDomicilio)}',
+                          subtitulo:
+                              'Costo: ${_cop(_precioDomicilio)}',
                           seleccionado: _domicilio,
                           onTap: () => setState(() => _domicilio = true),
                         ),
-
-                        // Formulario domicilio
                         if (_domicilio) ...[
                           const SizedBox(height: 16),
-                          const Text('Datos de entrega',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                          const Text(
+                            'Datos de entrega',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 8),
                           TextField(
                             controller: _nombreReceptorCtrl,
@@ -278,17 +328,17 @@ Future<void> _confirmarPedido() async {
                             decoration: const InputDecoration(
                               hintText:
                                   'Dirección completa (Calle, Barrio, Ciudad)',
-                              prefixIcon: Icon(Icons.location_on_outlined),
+                              prefixIcon:
+                                  Icon(Icons.location_on_outlined),
                             ),
                           ),
                         ],
-
                         const SizedBox(height: 24),
-
-                        // Resumen de pago en COP
-                        const Text('Resumen de Pago',
-                            style: TextStyle(
-                                fontSize: 17, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Resumen de Pago',
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(height: 12),
                         _buildFila('Subtotal', _cop(_subtotal)),
                         if (_domicilio)
@@ -300,23 +350,27 @@ Future<void> _confirmarPedido() async {
                     ),
                   ),
                 ),
-
-                // Botón confirmar pegado al fondo
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16)),
-                      onPressed: _procesando ? null : _confirmarPedido,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      onPressed:
+                          _procesando ? null : _confirmarPedido,
                       child: _procesando
                           ? const CircularProgressIndicator(
                               color: Colors.white)
-                          : const Text('Confirmar y Pagar',
+                          : const Text(
+                              'Confirmar y Pagar',
                               style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.bold)),
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -333,12 +387,15 @@ Future<void> _confirmarPedido() async {
           const Icon(Icons.shopping_cart_outlined,
               size: 80, color: Colors.grey),
           const SizedBox(height: 16),
-          const Text('Tu carrito está vacío',
-              style:
-                  TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text(
+            'Tu carrito está vacío',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
-          const Text('Agrega medicamentos desde el catálogo',
-              style: TextStyle(color: Colors.grey)),
+          const Text(
+            'Agrega medicamentos desde el catálogo',
+            style: TextStyle(color: Colors.grey),
+          ),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
@@ -358,9 +415,10 @@ Future<void> _confirmarPedido() async {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Row(
@@ -379,43 +437,52 @@ Future<void> _confirmarPedido() async {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item['nombre'] ?? '',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13),
-                    overflow: TextOverflow.ellipsis),
-                Text(_cop((item['precio'] as num).toDouble()),
-                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(
+                  item['nombre'] ?? '',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  _cop((item['precio'] as num).toDouble()),
+                  style:
+                      const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
               ],
             ),
           ),
-          // Controles cantidad
           Row(
             children: [
               _btnCantidad(
-                  icon: Icons.remove,
-                  onTap: () {
-                    setState(() {
-                      if (item['cantidad'] > 1) {
-                        item['cantidad']--;
-                      } else {
-                        _items.remove(item);
-                      }
-                    });
-                  }),
+                icon: Icons.remove,
+                onTap: () {
+                  setState(() {
+                    if (item['cantidad'] > 1) {
+                      item['cantidad']--;
+                    } else {
+                      _items.remove(item);
+                    }
+                  });
+                },
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('${item['cantidad']}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                child: Text(
+                  '${item['cantidad']}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
               _btnCantidad(
                 icon: Icons.add,
                 filled: true,
                 onTap: () {
-                  final stockDisponible = (item['stock'] as num?)?.toInt() ?? 0;
+                  final stockDisponible =
+                      (item['stock'] as num?)?.toInt() ?? 0;
                   if (item['cantidad'] >= stockDisponible) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Máximo disponible: $stockDisponible unidades'),
+                        content: Text(
+                            'Máximo disponible: $stockDisponible unidades'),
                         backgroundColor: Colors.orange,
                         duration: const Duration(seconds: 1),
                       ),
@@ -432,10 +499,11 @@ Future<void> _confirmarPedido() async {
     );
   }
 
-  Widget _btnCantidad(
-      {required IconData icon,
-      required VoidCallback onTap,
-      bool filled = false}) {
+  Widget _btnCantidad({
+    required IconData icon,
+    required VoidCallback onTap,
+    bool filled = false,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -445,8 +513,11 @@ Future<void> _confirmarPedido() async {
           shape: BoxShape.circle,
           border: Border.all(color: const Color(0xFF00BCD4)),
         ),
-        child: Icon(icon,
-            size: 16, color: filled ? Colors.white : const Color(0xFF00BCD4)),
+        child: Icon(
+          icon,
+          size: 16,
+          color: filled ? Colors.white : const Color(0xFF00BCD4),
+        ),
       ),
     );
   }
@@ -461,7 +532,8 @@ Future<void> _confirmarPedido() async {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -474,24 +546,31 @@ Future<void> _confirmarPedido() async {
         ),
         child: Row(
           children: [
-            Icon(icono,
-                color: seleccionado
-                    ? const Color(0xFF00BCD4)
-                    : Colors.grey),
+            Icon(
+              icono,
+              color: seleccionado
+                  ? const Color(0xFF00BCD4)
+                  : Colors.grey,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(titulo,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: seleccionado
-                              ? const Color(0xFF00BCD4)
-                              : Colors.black)),
-                  Text(subtitulo,
-                      style: const TextStyle(
-                          color: Colors.grey, fontSize: 12)),
+                  Text(
+                    titulo,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: seleccionado
+                          ? const Color(0xFF00BCD4)
+                          : Colors.black,
+                    ),
+                  ),
+                  Text(
+                    subtitulo,
+                    style: const TextStyle(
+                        color: Colors.grey, fontSize: 12),
+                  ),
                 ],
               ),
             ),
@@ -509,17 +588,21 @@ Future<void> _confirmarPedido() async {
 
   Widget _buildFila(String label, String valor, {bool bold = false}) {
     final style = TextStyle(
-        fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-        fontSize: bold ? 16 : 14);
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+      fontSize: bold ? 16 : 14,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: style),
-          Text(valor,
-              style: style.copyWith(
-                  color: bold ? const Color(0xFF00BCD4) : null)),
+          Text(
+            valor,
+            style: style.copyWith(
+              color: bold ? const Color(0xFF00BCD4) : null,
+            ),
+          ),
         ],
       ),
     );

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
+import '../services/notificacion_store.dart';
 import 'carrito_screen.dart';
 import 'notificaciones_screen.dart';
 import 'registro_perfil_screen.dart';
@@ -23,23 +23,31 @@ class _InicioScreenState extends State<InicioScreen> {
   final _busquedaCtrl = TextEditingController();
   final _busquedaFocusNode = FocusNode();
   final _scrollController = ScrollController();
-  int _notificacionesSinLeer = 2;
 
   final List<Map<String, dynamic>> _carrito = [];
+
+  // Store para notificaciones (badge reactivo)
+  final _store = NotificacionStore();
 
   @override
   void initState() {
     super.initState();
+    _store.addListener(_onStoreUpdate);
     _cargarDatos();
   }
 
-   @override
+  @override
   void dispose() {
+    _store.removeListener(_onStoreUpdate);
     _busquedaCtrl.dispose();
     _busquedaFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
+
+  // Se llama cada vez que el store cambia → reconstruye el badge
+  void _onStoreUpdate() => setState(() {});
+
   Future<void> _cargarDatos() async {
     await Future.wait([_cargarPerfil(), _cargarMedicamentos()]);
     setState(() => _cargando = false);
@@ -84,36 +92,38 @@ class _InicioScreenState extends State<InicioScreen> {
   }
 
   void _agregarAlCarrito(Map<String, dynamic> med) {
-  final stockDisponible = (med['stock'] as num?)?.toInt() ?? 0;
-  
-  // Cuántas unidades ya están en el carrito
-  final idx = _carrito.indexWhere((m) => m['id'] == med['id']);
-  final cantidadEnCarrito = idx >= 0 ? (_carrito[idx]['cantidad'] as int) : 0;
+    final stockDisponible = (med['stock'] as num?)?.toInt() ?? 0;
 
-  if (cantidadEnCarrito >= stockDisponible) {
+    final idx = _carrito.indexWhere((m) => m['id'] == med['id']);
+    final cantidadEnCarrito =
+        idx >= 0 ? (_carrito[idx]['cantidad'] as int) : 0;
+
+    if (cantidadEnCarrito >= stockDisponible) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Solo hay $stockDisponible unidades disponibles de ${med['nombre']}',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (idx >= 0) {
+      setState(() => _carrito[idx]['cantidad']++);
+    } else {
+      setState(() => _carrito.add({...med, 'cantidad': 1}));
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Solo hay $stockDisponible unidades disponibles de ${med['nombre']}'),
-        backgroundColor: Colors.orange,
+        content: Text('${med['nombre']} añadido al carrito'),
+        backgroundColor: const Color(0xFF00BCD4),
+        duration: const Duration(seconds: 1),
       ),
     );
-    return;
   }
-
-  if (idx >= 0) {
-    setState(() => _carrito[idx]['cantidad']++);
-  } else {
-    setState(() => _carrito.add({...med, 'cantidad': 1}));
-  }
-
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text('${med['nombre']} añadido al carrito'),
-      backgroundColor: const Color(0xFF00BCD4),
-      duration: const Duration(seconds: 1),
-    ),
-  );
-}
 
   Future<void> _cerrarSesion() async {
     await supabase.auth.signOut();
@@ -133,13 +143,14 @@ class _InicioScreenState extends State<InicioScreen> {
         child: _cargando
             ? const Center(child: CircularProgressIndicator())
             : CustomScrollView(
-               controller: _scrollController,
+                controller: _scrollController,
                 slivers: [
                   SliverToBoxAdapter(child: _buildHeader()),
                   SliverToBoxAdapter(child: _buildBusqueda()),
                   if (_recomendados.isNotEmpty)
                     SliverToBoxAdapter(child: _buildRecomendados()),
-                  SliverToBoxAdapter(child: _buildTodosLosMedicamentos()),
+                  SliverToBoxAdapter(
+                      child: _buildTodosLosMedicamentos()),
                 ],
               ),
       ),
@@ -148,6 +159,9 @@ class _InicioScreenState extends State<InicioScreen> {
   }
 
   Widget _buildHeader() {
+    // Badge reactivo: lee del store en cada build
+    final sinLeer = _store.sinLeer;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       child: Row(
@@ -156,14 +170,19 @@ class _InicioScreenState extends State<InicioScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('MedFind',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF00BCD4))),
-              Text('Hola, $_nombreUsuario!',
-                  style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold)),
+              const Text(
+                'MedFind',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF00BCD4),
+                ),
+              ),
+              Text(
+                'Hola, $_nombreUsuario!',
+                style: const TextStyle(
+                    fontSize: 24, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
           Row(
@@ -171,22 +190,27 @@ class _InicioScreenState extends State<InicioScreen> {
               Stack(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.notifications_outlined, size: 28),
+                    icon: const Icon(Icons.notifications_outlined,
+                        size: 28),
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const NotificacionesScreen()),
+                        builder: (_) => const NotificacionesScreen(),
+                      ),
                     ),
                   ),
-                  if (_notificacionesSinLeer > 0)
+                  if (sinLeer > 0)
                     Positioned(
-                      right: 8, top: 8,
+                      right: 8,
+                      top: 8,
                       child: Container(
                         padding: const EdgeInsets.all(3),
                         decoration: const BoxDecoration(
-                          color: Colors.red, shape: BoxShape.circle),
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
                         child: Text(
-                          '$_notificacionesSinLeer',
+                          '$sinLeer',
                           style: const TextStyle(
                               color: Colors.white, fontSize: 10),
                         ),
@@ -204,8 +228,9 @@ class _InicioScreenState extends State<InicioScreen> {
                   const PopupMenuItem(
                     value: 'perfil',
                     child: Row(children: [
-                      Icon(Icons.edit), SizedBox(width: 8),
-                      Text('Editar perfil')
+                      Icon(Icons.edit),
+                      SizedBox(width: 8),
+                      Text('Editar perfil'),
                     ]),
                   ),
                   const PopupMenuItem(
@@ -214,7 +239,7 @@ class _InicioScreenState extends State<InicioScreen> {
                       Icon(Icons.logout, color: Colors.red),
                       SizedBox(width: 8),
                       Text('Cerrar sesión',
-                          style: TextStyle(color: Colors.red))
+                          style: TextStyle(color: Colors.red)),
                     ]),
                   ),
                 ],
@@ -223,8 +248,9 @@ class _InicioScreenState extends State<InicioScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) =>
-                              const RegistroPerfilScreen(esEdicion: true)),
+                        builder: (_) =>
+                            const RegistroPerfilScreen(esEdicion: true),
+                      ),
                     );
                   } else if (v == 'salir') {
                     _cerrarSesion();
@@ -269,7 +295,8 @@ class _InicioScreenState extends State<InicioScreen> {
   }
 
   Widget _buildRecomendados() {
-    final label = _condiciones.isNotEmpty ? _condiciones.first : '';
+    final label =
+        _condiciones.isNotEmpty ? _condiciones.first : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -277,13 +304,16 @@ class _InicioScreenState extends State<InicioScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Text.rich(TextSpan(
             text: 'Recomendado para ti ',
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            style:
+                const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
             children: [
               TextSpan(
                 text: '($label)',
                 style: const TextStyle(
-                    color: Color(0xFF00BCD4), fontWeight: FontWeight.w500),
-              )
+                  color: Color(0xFF00BCD4),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           )),
         ),
@@ -308,8 +338,10 @@ class _InicioScreenState extends State<InicioScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Text('Todos los medicamentos',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          child: Text(
+            'Todos los medicamentos',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          ),
         ),
         GridView.builder(
           shrinkWrap: true,
@@ -339,9 +371,10 @@ class _InicioScreenState extends State<InicioScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
@@ -355,18 +388,26 @@ class _InicioScreenState extends State<InicioScreen> {
                 color: const Color(0xFFE0F7FA),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.medication_rounded,
-                  size: 40, color: Color(0xFF00BCD4)),
+              child: const Icon(
+                Icons.medication_rounded,
+                size: 40,
+                color: Color(0xFF00BCD4),
+              ),
             ),
           ),
           const SizedBox(height: 8),
-          Text(med['nombre'] ?? '',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            med['nombre'] ?? '',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, fontSize: 13),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 4),
-          Text(_formatCOP(med['precio']),
-              style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          Text(
+            _formatCOP(med['precio']),
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          ),
           const Spacer(),
           SizedBox(
             width: double.infinity,
@@ -376,10 +417,12 @@ class _InicioScreenState extends State<InicioScreen> {
                 foregroundColor: const Color(0xFF00BCD4),
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
+                  borderRadius: BorderRadius.circular(20),
+                ),
               ),
               onPressed: () => _agregarAlCarrito(med),
-              child: const Text('Añadir', style: TextStyle(fontSize: 12)),
+              child:
+                  const Text('Añadir', style: TextStyle(fontSize: 12)),
             ),
           ),
         ],
@@ -396,9 +439,10 @@ class _InicioScreenState extends State<InicioScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 3))
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
         ],
       ),
       child: Column(
@@ -410,34 +454,47 @@ class _InicioScreenState extends State<InicioScreen> {
               color: const Color(0xFFE0F7FA),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.medication_rounded,
-                size: 36, color: Color(0xFF00BCD4)),
+            child: const Icon(
+              Icons.medication_rounded,
+              size: 36,
+              color: Color(0xFF00BCD4),
+            ),
           ),
           const SizedBox(height: 8),
-          Text(med['nombre'] ?? '',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            med['nombre'] ?? '',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, fontSize: 13),
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 4),
-          Text(_formatCOP(med['precio']),
-              style: const TextStyle(
-                  color: Color(0xFF00BCD4),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13)),
+          Text(
+            _formatCOP(med['precio']),
+            style: const TextStyle(
+              color: Color(0xFF00BCD4),
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
           const SizedBox(height: 2),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: stock > 0 ? Colors.green.shade50 : Colors.red.shade50,
+              color: stock > 0
+                  ? Colors.green.shade50
+                  : Colors.red.shade50,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
               stock > 0 ? 'Disponible' : 'Agotado',
               style: TextStyle(
-                  color: stock > 0 ? Colors.green : Colors.red,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600),
+                color: stock > 0 ? Colors.green : Colors.red,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           const Spacer(),
@@ -447,12 +504,15 @@ class _InicioScreenState extends State<InicioScreen> {
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-                backgroundColor:
-                    stock > 0 ? const Color(0xFF00BCD4) : Colors.grey,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                backgroundColor: stock > 0
+                    ? const Color(0xFF00BCD4)
+                    : Colors.grey,
               ),
               onPressed: stock > 0 ? () => _agregarAlCarrito(med) : null,
-              child: const Text('Añadir', style: TextStyle(fontSize: 12)),
+              child:
+                  const Text('Añadir', style: TextStyle(fontSize: 12)),
             ),
           ),
         ],
@@ -488,8 +548,10 @@ class _InicioScreenState extends State<InicioScreen> {
         }
       },
       items: [
-        const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-        const BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Buscar'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.home), label: 'Inicio'),
+        const BottomNavigationBarItem(
+            icon: Icon(Icons.search), label: 'Buscar'),
         BottomNavigationBarItem(
           label: 'Carrito',
           icon: Badge(
@@ -498,8 +560,6 @@ class _InicioScreenState extends State<InicioScreen> {
             child: const Icon(Icons.shopping_cart),
           ),
         ),
-        // const BottomNavigationBarItem(
-        //     icon: Icon(Icons.person), label: 'Perfil'),
       ],
     );
   }
