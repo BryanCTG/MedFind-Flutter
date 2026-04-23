@@ -91,7 +91,7 @@ Future<void> _confirmarPedido() async {
   }
 }
 
-    //  Llamar a n8n
+    // 2. Llamar a n8n
     final tipoEntrega = _domicilio ? 'Domicilio' : 'Recoge en tienda';
     final orderCode = await ApiService.enviarPedido(
       userName: supabase.auth.currentUser?.email ?? 'Cliente',
@@ -354,7 +354,7 @@ Future<void> _confirmarPedido() async {
                           ? const CircularProgressIndicator(
                               color: Colors.white)
                           : const Text(
-                              'Confirmar y Pagar',
+                              'Confirmar Pedido',
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.bold,
