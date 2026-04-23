@@ -78,25 +78,20 @@ Future<void> _confirmarPedido() async {
             })
         .toList();
 
-    // 1. Verificar stock en tiempo real
     for (final item in _items) {
-      final result = await supabase
-          .from('medicamentos')
-          .select('stock, nombre')
-          .eq('id', item['id'])
-          .single();
+  final ok = await supabase.rpc('decrementar_stock', params: {
+    'p_id': item['id'],
+    'p_cantidad': item['cantidad'],
+  });
 
-      final stockActual = (result['stock'] as num).toInt();
-      final cantidad = item['cantidad'] as int;
+  if (ok != true) {
+    _snack('Stock insuficiente para ${item['nombre']}');
+    setState(() => _procesando = false);
+    return;
+  }
+}
 
-      if (stockActual < cantidad) {
-        _snack('${result['nombre']}: solo quedan $stockActual unidades');
-        setState(() => _procesando = false);
-        return;
-      }
-    }
-
-    // 2. Llamar a n8n
+    //  Llamar a n8n
     final tipoEntrega = _domicilio ? 'Domicilio' : 'Recoge en tienda';
     final orderCode = await ApiService.enviarPedido(
       userName: supabase.auth.currentUser?.email ?? 'Cliente',
@@ -107,17 +102,17 @@ Future<void> _confirmarPedido() async {
 
     final codigoFinal = orderCode ?? 'MF-LOCAL-${DateTime.now().millisecondsSinceEpoch}';
 
-    // 3. ✅ Notificación AQUÍ — antes de Supabase para que siempre se ejecute
+    //  Notificación AQUÍ — antes de Supabase para que siempre se ejecute
     NotificacionStore().agregarPedidoConfirmado(
       orderCode: codigoFinal,
       total: _total,
       tipo: tipoEntrega,
     );
 
-    // 4. Mostrar diálogo de éxito AQUÍ también
+    //  Mostrar diálogo de éxito AQUÍ también
     if (mounted) _mostrarExito(codigoFinal);
 
-    // 5. Operaciones de Supabase en segundo plano (errores no bloquean al usuario)
+    //  Operaciones de Supabase en segundo plano (errores no bloquean al usuario)
     try {
       await supabase.from('pedidos').insert({
         'usuario_id': userId,
@@ -132,14 +127,8 @@ Future<void> _confirmarPedido() async {
         'codigo': codigoFinal,
       });
 
-      for (final item in _items) {
-        await supabase.rpc('decrementar_stock', params: {
-          'p_id': item['id'],
-          'p_cantidad': item['cantidad'],
-        });
-      }
 
-      // 6. Alertas de stock bajo
+      //  Alertas de stock bajo
       for (final item in _items) {
         final result = await supabase
             .from('medicamentos')
