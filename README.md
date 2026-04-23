@@ -196,7 +196,7 @@ flutter run
 
 ---
 
-## 📤 Payload enviado a n8n
+##  Payload enviado a n8n
 
 Cuando el usuario confirma su pedido, Flutter envía el siguiente JSON al webhook:
 
@@ -246,19 +246,6 @@ dependencies:
 
 ---
 
-##  Checklist Técnico (Segundo Corte)
-
-- [x] App Flutter corre sin errores en emulador/dispositivo
-- [x] Webhook activo en n8n que retorna JSON con código de pedido
-- [x] Flutter consume el Webhook usando el paquete `http`
-- [x] El `orderCode` devuelto por n8n se muestra en la UI
-- [x] Manejo de estado de carga (`CircularProgressIndicator`) y de error
-- [x] Pedido guardado también en Supabase (tabla `pedidos`)
-- [x] Email automático al administrador al confirmar pedido
-- [x] Flujo n8n exportado como `.json` y subido al repositorio
-- [x] Variables sensibles en `.env` (no en el código fuente)
-
----
 
 ##  Contribuir
 
