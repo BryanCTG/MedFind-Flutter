@@ -1,4 +1,4 @@
-# 🏥 MedFind
+#  MedFind
 
 > Aplicación móvil Flutter para gestión inteligente de medicamentos con carrito de compras y notificación automática de pedidos al administrador mediante n8n.
 
@@ -10,7 +10,7 @@
 
 ---
 
-## 📱 Pantallas Principales
+##  Pantallas Principales
 
 
 
@@ -25,7 +25,7 @@
 
 ---
 
-## 🚀 Características
+##  Características
 
 - **Autenticación** con correo y contraseña vía Supabase Auth
 - **Ficha médica** personalizada con condiciones crónicas y alergias
@@ -36,7 +36,7 @@
 
 ---
 
-## 🏗️ Arquitectura
+##  Arquitectura
 
 ```
 Flutter App
@@ -53,7 +53,7 @@ Flutter App
 
 ---
 
-## 🔄 Flujo del Pedido (Semana 4 — Integración Completa)
+##  Flujo del Pedido (Semana 4 — Integración Completa)
 
 ```
 Usuario llena carrito
@@ -81,7 +81,7 @@ Flutter muestra el código al usuario en pantalla de éxito
 
 ---
 
-## 📁 Estructura del Proyecto
+##  Estructura del Proyecto
 
 ```
 medfind/
@@ -107,7 +107,7 @@ medfind/
 
 ---
 
-## ⚙️ Instalación y Configuración
+##  Instalación y Configuración
 
 ### Requisitos Previos
 
@@ -135,7 +135,7 @@ SUPABASE_ANON_KEY=TU_ANON_KEY
 N8N_ORDER_WEBHOOK_URL=https://tu-n8n.com/webhook/medfind-order
 ```
 
-> ⚠️ **Nunca subas el `.env` al repositorio.** Está incluido en `.gitignore`.
+>  **Nunca subas el `.env` al repositorio.** Está incluido en `.gitignore`.
 
 ### 3. Configurar Supabase
 
@@ -213,7 +213,7 @@ Cuando el usuario confirma su pedido, Flutter envía el siguiente JSON al webhoo
 }
 ```
 
-## 📨 Respuesta de n8n
+##  Respuesta de n8n
 
 ```json
 {
@@ -228,7 +228,7 @@ El `orderCode` se muestra al usuario en pantalla como confirmación del pedido.
 
 ---
 
-## 📦 Dependencias Flutter
+##  Dependencias Flutter
 
 ```yaml
 dependencies:
@@ -246,7 +246,7 @@ dependencies:
 
 ---
 
-## ✅ Checklist Técnico (Segundo Corte)
+##  Checklist Técnico (Segundo Corte)
 
 - [x] App Flutter corre sin errores en emulador/dispositivo
 - [x] Webhook activo en n8n que retorna JSON con código de pedido
@@ -260,7 +260,7 @@ dependencies:
 
 ---
 
-## 🤝 Contribuir
+##  Contribuir
 
 1. Fork del repositorio
 2. Crea una rama: `git checkout -b feature/nombre-funcionalidad`
@@ -270,6 +270,6 @@ dependencies:
 
 ---
 
-## 📄 Licencia
+##  Licencia
 
 MIT © 2026 MedFind Team
