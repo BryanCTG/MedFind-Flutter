@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "sendTo": "bryantctg@gmail.com",
+        "sendTo": "admin@medfind.com",
         "subject": "=Nuevo pedido {{ $json.orderCode }}",
         "message": "={{ $json.emailHtml }}",
         "options": {}
